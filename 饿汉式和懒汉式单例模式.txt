@@ -1,0 +1,62 @@
+
+ 
+public class LoginCacheUtil {
+private static LoginCacheUtil instance = null;
+  /** 
+     * 返回当前对象
+     * 单例模式 同步
+     */
+    public static synchronized LoginCacheUtil getInstance() {        
+        if (instance == null) {
+            instance = new LoginCacheUtil();
+        }
+        return instance;
+    }
+}
+
+1． 饿汉式是线程安全的,在类创建的同时就已经创建好一个静态的对象供系统使用,以后不在改变。
+public class EagerSingleton 
+{ 
+private static final EagerSingleton m_instance = new EagerSingleton(); 
+/** 
+* 私有的默认构造子 
+*/ 
+private EagerSingleton() { } 
+/** 
+* 静态工厂方法 
+*/ 
+public static EagerSingleton getInstance() 
+{
+return m_instance; 
+}
+}
+
+2.懒汉式如果在创建实例对象时不加上synchronized则会导致对对象的访问不是线程安全的，但是我们可以改造一下。
+ public class LazySingleton
+    {
+        //声明一个静态锁
+        private static readonly object lockHelper = new object();
+        //私有构造函数
+        private LazySingleton()
+        {
+        }
+        public static LazySingleton instence = null;
+        //静态属性
+        public static LazySingleton Instence
+        {
+            get
+            {
+                if (instence == null)
+                {
+                    lock (lockHelper)
+                    {
+                        if (instence == null)
+                        {
+                            instence = new LazySingleton();
+                        }
+                    }
+                }
+                return instence;
+            }
+        }
+    }
