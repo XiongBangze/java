@@ -1,0 +1,112 @@
+前言
+死锁单独写一篇文章是因为这是一个很严重的、必须要引起重视的问题。这不是夸大死锁的风险，尽管锁被持有的时间通常很短，但是作为商业产品的应用程序每天可能要执行数十亿次获取锁->释放锁的操作，只要在这数十亿次操作中只要有一次发生了错误，就可能导致程序中发生死锁，并且即使通过压力测试也不可能找出所有潜在的死锁。
+ 
+死锁
+一个经典的多线程问题。
+当一个线程永远地持有一个锁，并且其他线程都尝试去获得这个锁时，那么它们将永远被阻塞，这个我们都知道。如果线程A持有锁L并且想获得锁M，线程B持有锁M并且想获得锁L，那么这两个线程将永远等待下去，这种情况就是最简单的死锁形式。
+在数据库系统的设计中考虑了监测死锁以及从死锁中恢复，数据库如果监测到了一组事物发生了死锁时，将选择一个牺牲者并放弃这个事物。Java虚拟机解决死锁问题方面并没有数据库这么强大，当一组Java线程发生死锁时，这两个线程就永远不能再使用了，并且由于两个线程分别持有了两个锁，那么这两段同步代码/代码块也无法再运行了----除非终止并重启应用。
+死锁是设计的BUG，问题比较隐晦。不过死锁造成的影响很少会立即显现出来，一个类可能发生死锁，并不意味着每次都会发生死锁，这只是表示有可能。当死锁出现时，往往是在最糟糕的情况----高负载的情况下。
+下面给出一个产生死锁的简单代码并且演示如何分析这是一个死锁：
+
+public class DeadLock
+{
+private final Object left = new Object();
+private final Object right = new Object();
+public void leftRight() throws Exception
+{
+synchronized (left)
+{
+Thread.sleep(2000);
+synchronized (right)
+{
+System.out.println("leftRight end!");
+}
+}
+}
+public void rightLeft() throws Exception
+{
+synchronized (right)
+{
+Thread.sleep(2000);
+synchronized (left)
+{
+System.out.println("rightLeft end!");
+}
+}
+}
+}
+注意这里一定要有"Thread.sleep(2000)"让线程睡一觉，不然一个线程运行了，另一个线程还没有运行，先运行的线程很有可能就已经连续获得两个锁了。写两个线程分别调用它们：
+
+public class Thread0 extends Thread
+{
+private DeadLock dl;
+public Thread0(DeadLock dl)
+{
+this.dl = dl;
+}
+public void run()
+{
+try
+{
+dl.leftRight();
+}
+catch (Exception e)
+{
+e.printStackTrace();
+}
+}
+}
+
+public class Thread1 extends Thread
+{
+private DeadLock dl;
+public Thread1(DeadLock dl)
+{
+this.dl = dl;
+}
+public void run()
+{
+try
+{
+dl.rightLeft();
+}
+catch (Exception e)
+{
+e.printStackTrace();
+}
+}
+}
+写个main函数调用一下：
+
+public static void main(String[] args)
+{
+DeadLock dl = new DeadLock();
+Thread0 t0 = new Thread0(dl);
+Thread1 t1 = new Thread1(dl);
+t0.start();
+t1.start();
+}
+至于结果，没有结果，什么语句都不会打印，因为死锁了。下面演示一下如何定位死锁问题：
+1、jps获得当前Java虚拟机进程的pid
+ 
+2、jstack打印堆栈。jstack打印内容的最后其实已经报告发现了一个死锁，但因为我们是分析死锁产生的原因，而不是直接得到这里有一个死锁的结论，所以别管它，就看前面的部分
+先说明介绍一下每一部分的意思，以"Thread-1"为例：
+（1）"Thread-1"表示线程名称
+（2）"prio=6"表示线程优先级
+（3）"tid=00000000497cec00"表示线程Id
+（4）nid=0x219c
+线程对应的本地线程Id，这个重点说明下。因为Java线程是依附于Java虚拟机中的本地线程来运行的，实际上是本地线程在执行Java线程代码，只有本地线程才是真正的线程实体。Java代码中创建一个thread，虚拟机在运行期就会创建一个对应的本地线程，而这个本地线程才是真正的线程实体。Linux环境下可以使用"top -H -p JVM进程Id"来查看JVM进程下的本地线程（也被称作LWP）信息，注意这个本地线程是用十进制表示的，nid是用16进制表示的，转换一下就好了，0x219c对应的本地线程Id应该是8604。
+（5）"[0x000000004a3bf000..0x000000004a3bf790]"表示线程占用的内存地址
+（6）"java.lang.Thread.State：BLOCKED"表示线程的状态
+解释完了每一部分的意思，看下Thread-1处于BLOCKED状态，Thread-0处于BLOCKED状态。对这两个线程分析一下：
+（1）Thread-1获得了锁0x000000003416a4e8，在等待锁0x000000003416a4d8
+（2）Thread-0获得了锁0x000000003416a4d8，在等待锁0x000000003416a4e8
+由于两个线程都在等待获取对方持有的锁，所以就这么永久等待下去了。
+3、注意一下使用Eclipse/MyEclipse，这段程序如果不点击控制台上面的红色方框去Terminate掉它，而是右键->Run As->1 Java Application的话，这个进程会一直存在的，这时候可以利用taskkill命令去终止没有被Terminate的进程：
+ 
+避免死锁的方式
+既然可能产生死锁，那么接下来，讲一下如何避免死锁。
+1、让程序每次至多只能获得一个锁。当然，在多线程环境下，这种情况通常并不现实
+2、设计时考虑清楚锁的顺序，尽量减少嵌在的加锁交互数量
+
+3、既然死锁的产生是两个线程无限等待对方持有的锁，那么只要等待时间有个上限不就好了。当然synchronized不具备这个功能，但是我们可以使用Lock类中的tryLock方法去尝试获取锁，这个方法可以指定一个超时时限，在等待超过该时限之后变回返回一个失败信息

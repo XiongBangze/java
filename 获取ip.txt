@@ -1,0 +1,50 @@
+public static String getIp2(HttpServletRequest request) {
+            String ip = request.getHeader("X-Forwarded-For");
+            if(StringUtils.isNotEmpty(ip) && !"unKnown".equalsIgnoreCase(ip)){
+                 //多次反向代理后会有多个ip值，第一个ip才是真实ip
+                 int index = ip.indexOf(",");
+                 if(index != -1){
+                     return ip.substring(0,index);
+                 }else{
+                     return ip;
+                }
+            }
+            ip = request.getHeader("X-Real-IP");
+            if(StringUtils.isNotEmpty(ip) && !"unKnown".equalsIgnoreCase(ip)){
+                return ip;
+            }
+            return request.getRemoteAddr();
+        }
+
+0:0:0:0:0:0:0:1是ipv6的表现形式，对应ipv4来说相当于127.0.0.1，也就是本机
+如果项目部署在本机win7系统，访问时是通过 localhost 来访问，
+用java获取ip地址可能会出现该问题，这时获取的ip将是 0:0:0:0:0:0:0:1
+ 
+要是机器在局域网中，访问时使用自己的ip访问，如 我的ip是 ：192.168.123.156
+访问url：http://192.168.123.156:8080/test
+这时候请求会经过路由器转发，所以服务器获取的就是本机的局域网内ip，在java中获取的ip就是 192.168.123.156了
+ 
+
+下面几个获取ip的方法：
+public static String getIP(HttpServletRequest request) {
+                String ip = request.getHeader("x-forwarded-for");
+                if (!checkIP(ip)) {
+                        ip = request.getHeader("Proxy-Client-IP");
+                }
+                if (!checkIP(ip)) {
+                        ip = request.getHeader("WL-Proxy-Client-IP");
+                }
+                if (!checkIP(ip)) {
+                        ip = request.getRemoteAddr();
+                }
+                return ip;
+        }
+        private static boolean checkIP(String ip) {
+                if (ip == null || ip.length() == 0 || "unkown".equalsIgnoreCase(ip)
+                                || ip.split(".").length != 4) {
+                        return false;
+                }
+                return true;
+        }
+
+
